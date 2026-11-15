@@ -40,6 +40,40 @@ func Test_Unmarshal_AsyncCallback(t *testing.T) {
 		}, callbackStringID)
 	})
 
+
+	t.Run("numeric id preserves precision above 2^53", func(t *testing.T) {
+		var callback movehooks.AsyncCallback
+		err := json.Unmarshal([]byte(`{
+			"id": 9007199254740993,
+			"module_address": "0x1",
+			"module_name": "Counter"
+		}`), &callback)
+		require.NoError(t, err)
+		require.Equal(t, uint64(9007199254740993), callback.Id)
+	})
+
+	t.Run("string id preserves precision above 2^53", func(t *testing.T) {
+		var callback movehooks.AsyncCallback
+		err := json.Unmarshal([]byte(`{
+			"id": "9007199254740993",
+			"module_address": "0x1",
+			"module_name": "Counter"
+		}`), &callback)
+		require.NoError(t, err)
+		require.Equal(t, uint64(9007199254740993), callback.Id)
+	})
+
+	t.Run("maximum uint64 id is accepted", func(t *testing.T) {
+		var callback movehooks.AsyncCallback
+		err := json.Unmarshal([]byte(`{
+			"id": 18446744073709551615,
+			"module_address": "0x1",
+			"module_name": "Counter"
+		}`), &callback)
+		require.NoError(t, err)
+		require.Equal(t, ^uint64(0), callback.Id)
+	})
+
 	t.Run("empty module address", func(t *testing.T) {
 		var callback movehooks.AsyncCallback
 		err := json.Unmarshal([]byte(`{
