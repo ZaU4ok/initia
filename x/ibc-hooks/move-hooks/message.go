@@ -1,8 +1,10 @@
 package move_hooks
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	movetypes "github.com/initia-labs/initia/x/move/types"
@@ -61,7 +63,7 @@ type HookData struct {
 
 // intermediateCallback is used internally for JSON unmarshaling
 type intermediateCallback struct {
-	Id            any    `json:"id"`
+	Id            json.RawMessage `json:"id"`
 	ModuleAddress string `json:"module_address"`
 	ModuleName    string `json:"module_name"`
 }
@@ -87,25 +89,38 @@ func (a *AsyncCallback) UnmarshalJSON(bz []byte) error {
 		return fmt.Errorf("invalid module_address format: must start with '0x'")
 	}
 
-	// Handle ID based on type with overflow checking
-	switch v := ic.Id.(type) {
-	case float64:
-		if v < 0 || v >= float64(^uint64(0)) || v != float64(uint64(v)) {
-			return fmt.Errorf("id value out of range or contains decimals")
-		}
-		a.Id = uint64(v)
-	case string:
-		var parsed float64
-		if err := json.Unmarshal([]byte(v), &parsed); err != nil {
-			return fmt.Errorf("invalid id format: %w", err)
-		}
-		if parsed < 0 || parsed >= float64(^uint64(0)) || parsed != float64(uint64(parsed)) {
-			return fmt.Errorf("id value out of range or contains decimals")
-		}
-		a.Id = uint64(parsed)
-	default:
+	// Parse the ID directly from its JSON representation. Decoding through
+	// interface{} would convert JSON numbers to float64 and lose precision
+	// for uint64 values greater than 2^53.
+	idBytes := bytes.TrimSpace(ic.Id)
+	if len(idBytes) == 0 || string(idBytes) == "null" {
 		return fmt.Errorf("invalid id type: expected string or number")
 	}
+
+	var id uint64
+	if idBytes[0] == '"' {
+		var idString string
+		if err := json.Unmarshal(idBytes, &idString); err != nil {
+			return fmt.Errorf("invalid id format: %w", err)
+		}
+		parsed, err := strconv.ParseUint(idString, 10, 64)
+		if err != nil {
+			if strings.ContainsAny(idString, ".-+") {
+				return fmt.Errorf("id value out of range or contains decimals")
+			}
+			return fmt.Errorf("invalid id format: %w", err)
+		}
+		id = parsed
+	} else if (idBytes[0] >= '0' && idBytes[0] <= '9') || idBytes[0] == '-' {
+		parsed, err := strconv.ParseUint(string(idBytes), 10, 64)
+		if err != nil {
+			return fmt.Errorf("id value out of range or contains decimals")
+		}
+		id = parsed
+	} else {
+		return fmt.Errorf("invalid id type: expected string or number")
+	}
+	a.Id = id
 
 	a.ModuleAddress = ic.ModuleAddress
 	a.ModuleName = ic.ModuleName
