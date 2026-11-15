@@ -3,6 +3,7 @@ package move_hooks
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -105,7 +106,7 @@ func (a *AsyncCallback) UnmarshalJSON(bz []byte) error {
 		}
 		parsed, err := strconv.ParseUint(idString, 10, 64)
 		if err != nil {
-			if strings.Contains(err.Error(), "value out of range") || strings.ContainsAny(idString, ".-+") {
+			if errors.Is(err, strconv.ErrRange) || strings.ContainsAny(idString, ".-+") {
 				return fmt.Errorf("id value out of range or contains decimals")
 			}
 			return fmt.Errorf("invalid id format: %w", err)
